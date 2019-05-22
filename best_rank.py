@@ -161,13 +161,10 @@ class Model:
     """ The GCN layer in BAG
     """
 
-    def GCNLayer(self, adj, hidden_tensor, hidden_mask):
-        with tf.variable_scope('hop_layer', reuse=tf.AUTO_REUSE):
+    def prog(self, adj, hidden_tensor,mask):
             adjacency_tensor = adj
             hidden_tensors = tf.stack([tf.layers.dense(inputs=hidden_tensor, units=hidden_tensor.shape[-1])
-                                       for _ in range(adj.shape[1])], 1) * \
-                             tf.expand_dims(tf.expand_dims(hidden_mask, -1), 1)
-
+                                       for _ in range(adj.shape[1])], 1) * tf.expand_dims(tf.expand_dims(mask, -1), 1)
             update = tf.reduce_sum(tf.matmul(adjacency_tensor, hidden_tensors), 1) + tf.layers.dense(
                 hidden_tensor, units=hidden_tensor.shape[-1]) * tf.expand_dims(hidden_mask, -1)
 
@@ -249,7 +246,7 @@ class Model:
             last_hop = tf.layers.dense(outputs, outputs.shape[-1], use_bias=False) + \
                        tf.layers.dense(context_att, context_att.shape[-1], use_bias=False)
             for _ in range(hops):
-                last_hop = self.GCNLayer(bias_mat, last_hop, node_mask)
+                last_hop = self.prog(bias_mat, last_hop, node_mask)
             last_hop = tf.nn.softmax(last_hop*tf.expand_dims(query_mask, 1))
             res = tf.matmul(last_hop, memory_)
             return res
