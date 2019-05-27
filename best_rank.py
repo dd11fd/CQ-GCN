@@ -35,7 +35,6 @@ class Model:
         self.pos_dict_size, self.ner_dict_size = pos_dict_size, ner_dict_size
         self.use_bert = use_bert
         self.max_supports = max_supports
-    """ Main function to get the model prediction"""
 
     def modelProcessing(self, query_length, adj, nodes_mask, bmask, nodes_elmo, query_elmo, nodes_glove, query_glove,
                         nodes_ner, nodes_pos, query_ner, query_pos, dropout,nodes_bert, query_bert,
@@ -64,9 +63,6 @@ class Model:
         #                                         adj, hid_units=64, n_heads=4,node_mask=nodes_mask, dropout=dropout)
         # predictions = self.outputLayer(last_hop, bmask)
         return predictions
-
-    """ Multi-level feature layer
-    """
 
     def featureLayer(self, query_length, nodes_elmo, query_elmo, nodes_glove, query_glove, nodes_ner, nodes_pos,
                      query_ner, query_pos,nodes_bert, query_bert):
@@ -101,8 +97,6 @@ class Model:
                 )
             elif self.query_encoding_type == 'linear':
                 query_compress = tf.layers.dense(query_flat, units=self.encoding_size, activation=tf.nn.tanh)
-            # query_compress = (batch_size, query_feature_dim)
-            # query_compress = tf.concat((output_state_fw[-1].h, output_state_bw[-1].h), -1)
             nodes_compress = tf.layers.dense(nodes_flat, units=self.encoding_size, activation=tf.nn.tanh)
 
             ## concatenate POS and NER feature with encoded feature
@@ -115,64 +109,14 @@ class Model:
                 nodes_pos_emb = tf.nn.embedding_lookup(pos_embeddings, nodes_pos)
                 # (batch_size, max_query_length, hidden_size + ner_emb_size + pos_emb_size)
                 query_compress = tf.concat((query_compress, query_ner_emb, query_pos_emb), -1)
-                # (batch_size, max_nodes, hidden_size + ner_emb_size + pos_emb_size)
+     
                 nodes_compress = tf.concat((nodes_compress, nodes_ner_emb, nodes_pos_emb), -1)
             return nodes_compress, query_compress
 
-    """ Output layer in BAG
-    """
-
-    def outputLayer(self, attentionFlowOutput, bmask):
-        with tf.variable_scope('output_layer', reuse=tf.AUTO_REUSE):
-            ## two layer FFN
-            rawPredictions = tf.squeeze(tf.layers.dense(tf.layers.dense(
-                attentionFlowOutput, units=256, activation=tf.nn.tanh), units=1), -1)
-
-            predictions2 = bmask * tf.expand_dims(rawPredictions, 1)
-            predictions2 = tf.where(tf.equal(predictions2, 0),
-                                    tf.fill(tf.shape(predictions2), -np.inf), predictions2)
-            predictions2 = tf.reduce_max(predictions2, -1)
-            return predictions2
-
-    """ Bi-directional attention layer in BAG
-    """
-
-    def biAttentionLayer(self, query_compress, nodes_compress, last_hop):
-        with tf.variable_scope('attention_flow', reuse=tf.AUTO_REUSE):
-            # context_query_similarity = (batch_size, max_nodes, node_feature_dim)
-            expanded_query = tf.tile(tf.expand_dims(query_compress, -3), (1, self.max_supports, 1, 1))
-            expanded_nodes = tf.tile(tf.expand_dims(last_hop, -2), (1, 1, self.max_query_size, 1))
-            context_query_similarity = expanded_nodes * expanded_query
-            # concated_attention_data = (batch_size, max_nodes, max_query, feature_dim)
-            concated_attention_data = tf.concat((expanded_nodes, expanded_query, context_query_similarity), -1)
-            similarity = tf.reduce_mean(tf.layers.dense(concated_attention_data, units=1, use_bias=False),
-                                        -1)  # (batch_size, max_nodes, max_query)
-
-            ## nodes to query = (batch_size, max_nodes, feature_dim)
-            nodes2query = tf.matmul(tf.nn.softmax(similarity, -1), query_compress)
-            ## query to nodes = (batch_size, max_query, feature_dim)
-            b = tf.nn.softmax(tf.reduce_max(similarity, -1), -1)  # b = (batch_size, max_nodes)
-            query2nodes = tf.matmul(tf.expand_dims(b, 1), nodes_compress)
-            query2nodes = tf.tile(query2nodes, (1, self.max_nodes, 1))
-            G = tf.concat((nodes_compress, nodes2query, nodes_compress * nodes2query, nodes_compress * query2nodes), -1)
-            # G = tf.concat((nodes_compress, nodes_compress * nodes2query, nodes_compress * query2nodes), -1)
-            return G
-
-    """ The GCN layer in BAG
-    """
-
-    def prog(self, adj, hidden_tensor,mask):
-            adjacency_tensor = adj
-            hidden_tensors = tf.stack([tf.layers.dense(inputs=hidden_tensor, units=hidden_tensor.shape[-1])
-                                       for _ in range(adj.shape[1])], 1) * tf.expand_dims(tf.expand_dims(mask, -1), 1)
-            update = tf.reduce_sum(tf.matmul(adjacency_tensor, hidden_tensors), 1) + tf.layers.dense(
-                hidden_tensor, units=hidden_tensor.shape[-1]) * tf.expand_dims(hidden_mask, -1)
-
-            att = tf.layers.dense(tf.concat((update, hidden_tensor), -1), units=hidden_tensor.shape[-1],
-                                  activation=tf.nn.sigmoid) * tf.expand_dims(hidden_mask, -1)
-
-            output = att * tf.nn.tanh(update) + (1 - att) * hidden_tensor
-            return output
+    def prog(self, adj, nodes,mask):
+            nodes = tf.stack([tf.layers.dense(inputs=nodes, units=nodes.shape[-1]) for _ in range(adj.shape[1])], 1) * tf.expand_dims(tf.expand_dims(mask, -1), 1)
+            update = tf.reduce_sum(tf.matmul(adj, nodes), 1) + tf.layers.dense(nodes, units=nodes.shape[-1]) * tf.expand_dims(mask, -1)
+            return update
 
     def graph_query_head(self, inputs, memory, query_mask, bias_mat, hid_units, node_mask, dropout=1.0):
         with tf.name_scope('ques_my_attn'):
@@ -181,10 +125,11 @@ class Model:
             memory_ = tf.nn.relu(tf.layers.dense(memory, hid_units, use_bias=False))  # q*d
             outputs = tf.matmul(seq_fts, tf.transpose(memory_, [0, 2, 1])) / (hid_units ** 0.5)  # n*q
             logits = outputs
-            # logits = tf.nn.softmax(outputs*tf.expand_dims(query_mask, 1))
             last_hop = logits
             for _ in range(hops):
-                last_hop = self.GCNLayer(bias_mat, last_hop, node_mask)
+                last_hop = self.prog(bias_mat, last_hop, node_mask)
+            att = tf.layers.dense(tf.concat((last_hop, logits), -1), units=logits.shape[-1],activation=tf.nn.sigmoid) * tf.expand_dims(node_mask, -1)
+            last_hop = att * tf.nn.tanh(update) + (1 - att) * logits
             last_hop = tf.nn.softmax(last_hop*tf.expand_dims(query_mask, 1))
             res = tf.matmul(last_hop, memory_)
             return res
@@ -199,25 +144,10 @@ class Model:
         return h_1
 
     def add_sentence_rank(self,attentionFlowOutput, context_bert,query,query_mask,bmask, hidden,nodetosup,dropout):
-        # with tf.variable_scope('output_layer', reuse=tf.AUTO_REUSE):
-        #     ## two layer FFN
-
         with tf.variable_scope('add_sentence'):
-            # indices = tf.range(0, context_bert.shape[0], dtype=tf.int32)
-            # indices = tf.tile(tf.expand_dims(indices, axis=1), [1, nodetosup.shape[-1]])
-            # indices = tf.stack([indices, nodetosup], axis=2)
             indices = nodetosup
-            # context = tf.layers.dense(context_bert, units=self.encoding_size, activation=tf.nn.tanh)
-
             atten = self.multi_head(context_bert, query, query_mask, hidden=64, n_heads=4, keep_prob=dropout)
             mention_atten = tf.gather_nd(atten, indices)
-
-            # context = tf.nn.dropout(context,dropout)
-            # context_atten = self.biAttentionLayer(query,context,context)
-            # mention_atten = tf.gather_nd(context_atten, indices)
-
-
-            # attentionFlowOutput = tf.concat([attentionFlowOutput,mention_atten],axis=-1)
             rawPredictions = tf.squeeze(tf.layers.dense(tf.layers.dense(
                 attentionFlowOutput, units=256, activation=tf.nn.tanh), units=1), -1)
             mention_rank = tf.squeeze(tf.layers.dense(tf.layers.dense(
@@ -654,11 +584,11 @@ if __name__ == '__main__':
     weight_file = 'data/elmo_2x4096_512_2048cnn_2xhighway_weights'
     encoding_type_map = {'lstm':'lstm','linear':'linear'}
 
-    model_name = 'BAG'
+    model_name = 'CQ-GCN'
     if evaluation_mode:
         logger = config_logger('evaluation/' + model_name)
     else:
-        logger = config_logger('BAG')
+        logger = config_logger('CQ_GCN')
 
     model_path = os.getcwd() + '/best_models/' + model_name + '/'
     if not os.path.exists(model_path):
