@@ -247,61 +247,7 @@ class Dataset(object):
                     data_extra[index]['query_pos'] = data_extra[index]['query_pos'][:self.max_query_size]
         return query_length_mb
 
-    """ The core function to generate next batch"""
-    # def next_batch_pro(self, idx, epoch_finished):
-    #     data_mb = [self.data[i] for i in idx]
-    #     data_elmo_mb = None
-    #     data_glove_mb = None
-    #     data_extra_mb = None
-    #     if self.use_elmo:
-    #         data_elmo_mb = [self.data_elmo[i] for i in idx]
-    #     if self.use_glove:
-    #         data_glove_mb = [self.data_glove[i] for i in idx]
-    #     if self.use_extra_feature:
-    #         data_extra_mb = [self.data_extra[i] for i in idx]
-    #
-    #     id_mb = [d['id'] for d in data_mb]
-    #
-    #     answer_candidate_id_mb = [d['answer_candidate_id'] for d in data_mb]
-    #
-    #     nodes_length_mb = self.truncateNodesAndEdge(data_mb, data_elmo_mb, data_glove_mb, data_extra_mb)
-    #     query_length_mb = self.truncateQuery(data_mb, data_elmo_mb, data_glove_mb, data_glove_mb)
-    #
-    #     adj_mb = self.buildEdgeData(data_mb)
-    #
-    #     nodes_elmo_mb, query_elmo_mb = None, None
-    #     if self.use_elmo:
-    #         nodes_elmo_mb, query_elmo_mb = self.buildElmoData(data_elmo_mb)
-    #
-    #     nodes_glove_mb, query_glove_mb = None, None
-    #     if self.use_glove:
-    #         nodes_glove_mb, query_glove_mb = self.buildGloveData(idx, data_glove_mb)
-    #
-    #     nodes_ner_mb, nodes_pos_mb, query_ner_mb, query_pos_mb = None, None, None, None
-    #     if self.use_extra_feature:
-    #         nodes_ner_mb, nodes_pos_mb, query_ner_mb, query_pos_mb = self.buildExtraData(data_extra_mb)
-    #
-    #     if self.add_query_node:
-    #         bmask_mb = np.array([np.pad(np.array([i == np.array(d['nodes_candidates_id'])
-    #                                               for i in range(len(d['candidates']) - 1)]),
-    #             ((0, self.max_candidates - len(d['candidates']) + 1),
-    #              (0, self.max_nodes - len(d['nodes_candidates_id']))), mode='constant')
-    #                              for d in data_mb])
-    #     else:
-    #         bmask_mb = np.array([np.pad(np.array([i == np.array(d['nodes_candidates_id'])
-    #                                               for i in range(len(d['candidates']))]),
-    #             ((0, self.max_candidates - len(d['candidates'])), (0, self.max_nodes - len(d['nodes_candidates_id']))),
-    #             mode='constant') for d in data_mb])
-    #
-    #     return epoch_finished, {'id_mb': id_mb, 'nodes_length_mb': nodes_length_mb,
-    #                             'query_length_mb': query_length_mb, 'bmask_mb': bmask_mb, 'adj_mb': adj_mb,
-    #                             'answer_candidates_id_mb': answer_candidate_id_mb,
-    #                             'nodes_elmo_mb': nodes_elmo_mb, 'query_elmo_mb': query_elmo_mb,
-    #                             'nodes_glove_mb': nodes_glove_mb, 'query_glove_mb': query_glove_mb,
-    #                             'nodes_ner_mb': nodes_ner_mb, 'nodes_pos_mb': nodes_pos_mb,
-    #                             'query_ner_mb': query_ner_mb, 'query_pos_mb': query_pos_mb}
 
-    """ The core function to generate next batch"""
 
     def buildBertData(self, data_bert_mb):
         # filt = lambda c: np.array([c.mean(0)]).reshape([-1])
